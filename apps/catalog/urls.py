@@ -1,4 +1,15 @@
-from django.urls import path
+from rest_framework.routers import DefaultRouter
+from apps.catalog.views import (
+    DiagnosticCentreViewSet,
+    DiagnosticTestViewSet,
+    CentreTestViewSet,
+)
 
 app_name = "catalog"
-urlpatterns = []
+
+router = DefaultRouter()
+router.register(r"centres", DiagnosticCentreViewSet, basename="centre")
+router.register(r"tests", DiagnosticTestViewSet, basename="test")
+router.register(r"centre-tests", CentreTestViewSet, basename="centre-test")
+
+urlpatterns = router.urls
