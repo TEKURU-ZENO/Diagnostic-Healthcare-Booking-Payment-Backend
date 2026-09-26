@@ -61,7 +61,7 @@ class PaymentWebhookPropertyTests(TestCase):
             status=BookingStatus.PENDING,
         )
         provider_ref = f"pay_hypo_{uuid.uuid4().hex}"
-        Payment.objects.create(
+        payment = Payment.objects.create(
             user=self.user,
             booking=booking,
             amount=booking.amount,
@@ -71,6 +71,7 @@ class PaymentWebhookPropertyTests(TestCase):
         )
 
         confirmed_ever_seen = False
+        captured_ever_seen = False
 
         for event_id, status_outcome in events:
             payload = {
@@ -92,6 +93,20 @@ class PaymentWebhookPropertyTests(TestCase):
 
             # Invariant 2: If booking was confirmed, it MUST NEVER flip back to FAILED
             if confirmed_ever_seen:
+                assert booking.status == BookingStatus.CONFIRMED
+
+            # Invariant 4: captured money is never "un-captured" by a later event
+            payment.refresh_from_db()
+            if payment.status == PaymentStatus.SUCCESS:
+                captured_ever_seen = True
+            if captured_ever_seen:
+                assert payment.status == PaymentStatus.SUCCESS
+
+            # Invariant 5: the booking's only payment is never flagged for refund
+            assert not payment.flagged_for_refund
+
+            # Invariant 6: booking and payment agree
+            if payment.status == PaymentStatus.SUCCESS:
                 assert booking.status == BookingStatus.CONFIRMED
 
         # Invariant 1: Booking is in a valid terminal/settled state
