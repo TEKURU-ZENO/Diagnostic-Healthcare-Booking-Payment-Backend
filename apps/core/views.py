@@ -1,8 +1,12 @@
+import logging
+
 from django.db import connection
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+logger = logging.getLogger(__name__)
 
 
 class HealthCheckView(APIView):
@@ -19,9 +23,10 @@ class HealthCheckView(APIView):
                 cursor.execute("SELECT 1;")
                 row = cursor.fetchone()
                 db_healthy = row is not None and row[0] == 1
-        except Exception as e:
+        except Exception:
+            logger.exception("Database health check failed.")
             return Response(
-                {"status": "error", "database": "disconnected", "detail": str(e)},
+                {"status": "error", "database": "disconnected"},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 

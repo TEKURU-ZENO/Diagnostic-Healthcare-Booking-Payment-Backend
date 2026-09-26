@@ -1,3 +1,4 @@
+import re
 import uuid
 from collections.abc import Callable
 
@@ -5,11 +6,14 @@ from django.http import HttpRequest, HttpResponse
 
 from apps.core.context import set_request_id
 
+REQUEST_ID_REGEX = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
+
 
 class RequestIDMiddleware:
     """
     Middleware that ensures every incoming request has a unique Request ID.
     Reads 'X-Request-ID' header or generates a new UUID4.
+    Rejects malformed or oversized IDs to prevent log injection or abuse.
     Injects the ID into contextvars and sets 'X-Request-ID' on the response.
     """
 
@@ -18,7 +22,7 @@ class RequestIDMiddleware:
 
     def __call__(self, request: HttpRequest) -> HttpResponse:
         req_id = request.headers.get("X-Request-ID")
-        if not req_id:
+        if not req_id or not REQUEST_ID_REGEX.match(req_id):
             req_id = str(uuid.uuid4())
 
         set_request_id(req_id)

@@ -18,6 +18,15 @@ class PaymentCreateSerializer(serializers.Serializer):
         required=False,
     )
 
+    def validate_simulate_outcome(self, value):
+        from django.conf import settings
+
+        if not getattr(settings, "MOCK_PAYMENTS_ENABLED", False):
+            raise serializers.ValidationError(
+                "Simulating payment outcomes is disabled in this environment."
+            )
+        return value
+
 
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:

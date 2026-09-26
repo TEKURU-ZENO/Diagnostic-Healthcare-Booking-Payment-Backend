@@ -36,6 +36,12 @@ class PaymentNotFoundError(APIException):
     default_code = "payment_not_found"
 
 
+class ResourceProtectedError(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "Cannot delete this resource because existing bookings depend on it."
+    default_code = "resource_protected"
+
+
 def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Response | None:
     """
     Custom exception handler to standardize all API error responses into:
@@ -47,6 +53,20 @@ def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Respons
         }
     }
     """
+    from django.db.models import ProtectedError
+
+    if isinstance(exc, ProtectedError):
+        return Response(
+            {
+                "error": {
+                    "code": "resource_protected",
+                    "message": "Cannot delete this resource because existing records depend on it.",
+                    "details": None,
+                }
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
+
     response = exception_handler(exc, context)
 
     if response is not None:

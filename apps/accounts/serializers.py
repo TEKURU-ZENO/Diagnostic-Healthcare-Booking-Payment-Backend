@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 
 User = get_user_model()
@@ -18,10 +19,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         fields = ("id", "username", "email", "password")
         read_only_fields = ("id",)
 
+    def validate_username(self, value):
+        normalized = value.strip().lower()
+        if User.objects.filter(username__iexact=normalized).exists():
+            raise serializers.ValidationError("An account with these details already exists.")
+        return normalized
+
     def validate_email(self, value):
         normalized = value.strip().lower()
         if User.objects.filter(email__iexact=normalized).exists():
-            raise serializers.ValidationError("A user with this email already exists.")
+            raise serializers.ValidationError("An account with these details already exists.")
         return normalized
 
     def validate_password(self, value):
@@ -30,12 +37,22 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data["username"],
-            email=validated_data["email"],
-            password=validated_data["password"],
-        )
-        return user
+        username = validated_data["username"].strip().lower()
+        email = validated_data["email"].strip().lower()
+        try:
+            with transaction.atomic():
+                if User.objects.filter(email__iexact=email).exists():
+                    raise serializers.ValidationError(
+                        "An account with these details already exists."
+                    )
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    password=validated_data["password"],
+                )
+                return user
+        except IntegrityError:
+            raise serializers.ValidationError("An account with these details already exists.")
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

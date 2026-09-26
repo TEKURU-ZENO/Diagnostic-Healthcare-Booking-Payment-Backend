@@ -3,17 +3,32 @@ from datetime import timedelta
 from pathlib import Path
 
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv(
-    "SECRET_KEY", "django-insecure-eve-assignment-dev-secret-key-change-in-production-12345"
-)
+INSECURE_DEV_SECRET = "django-insecure-eve-assignment-dev-secret-key-change-in-production-12345"
+INSECURE_DEV_WEBHOOK_SECRET = "eve_test_webhook_secret_shared_key_2026"
 
-DEBUG = os.getenv("DEBUG", "True").lower() in ("true", "1", "yes")
+DEBUG_ENV = os.getenv("DEBUG")
+DEBUG = DEBUG_ENV.lower() in ("true", "1", "yes") if DEBUG_ENV is not None else False
+
+SECRET_KEY = os.getenv("SECRET_KEY", INSECURE_DEV_SECRET if DEBUG else "")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", INSECURE_DEV_WEBHOOK_SECRET if DEBUG else "")
+
+if not DEBUG:
+    if not SECRET_KEY or SECRET_KEY == INSECURE_DEV_SECRET:
+        raise ImproperlyConfigured("SECRET_KEY must be securely configured when DEBUG=False.")
+    if not WEBHOOK_SECRET or WEBHOOK_SECRET == INSECURE_DEV_WEBHOOK_SECRET:
+        raise ImproperlyConfigured("WEBHOOK_SECRET must be securely configured when DEBUG=False.")
+
+# Feature flag: only accept simulate_outcome and mount mock provider when enabled
+MOCK_PAYMENTS_ENABLED = os.getenv(
+    "MOCK_PAYMENTS_ENABLED", "True" if DEBUG else "False"
+).lower() in ("true", "1", "yes")
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0,web").split(",")
 
@@ -171,6 +186,3 @@ LOGGING = {
         },
     },
 }
-
-# Webhook configuration
-WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "eve_test_webhook_secret_shared_key_2026")
