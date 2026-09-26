@@ -3,6 +3,7 @@ import uuid
 
 from django.db import IntegrityError, transaction
 from django.http import Http404
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -42,7 +43,7 @@ class PaymentCreateView(APIView):
 
         serializer = PaymentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        requested_booking = serializer.validated_data["booking"]
+        requested_booking_id = serializer.validated_data["booking"]
         simulate_outcome = serializer.validated_data.get("simulate_outcome", "SUCCESS")
 
         # 2. Check for previously completed idempotent request first
@@ -50,7 +51,7 @@ class PaymentCreateView(APIView):
             user=request.user, idempotency_key=idempotency_key
         ).first()
         if existing_payment:
-            if existing_payment.booking_id != requested_booking.id:
+            if existing_payment.booking_id != requested_booking_id:
                 raise IdempotencyPayloadMismatchError(
                     "Idempotency-Key was already used for a different booking."
                 )
@@ -63,7 +64,7 @@ class PaymentCreateView(APIView):
                 # Lock booking row to serialize against background expiry and concurrent payments
                 booking = (
                     Booking.objects.select_for_update()
-                    .filter(id=requested_booking.id)
+                    .filter(id=requested_booking_id)
                     .first()
                 )
                 if not booking or (booking.user != request.user and not request.user.is_staff):
@@ -74,6 +75,9 @@ class PaymentCreateView(APIView):
                     raise PaymentConflictError(
                         f"Cannot initiate payment for booking with status '{booking.status}'."
                     )
+
+                if booking.appointment_at <= timezone.now():
+                    raise PaymentConflictError("Cannot pay for an appointment that is in the past.")
 
                 if booking.status == BookingStatus.FAILED:
                     booking.transition_to(BookingStatus.PENDING, source="api")
@@ -142,7 +146,11 @@ class PaymentCreateView(APIView):
 
 
 class WebhookView(APIView):
+    # Authenticated by HMAC, not JWT. No throttling: the global anon rate (100/min) would answer
+    # a provider's retry burst with 429s, and every 429 is a delayed or lost payment update.
+    authentication_classes = []
     permission_classes = [AllowAny]
+    throttle_classes = []
 
     def post(self, request):
         raw_body = request.body

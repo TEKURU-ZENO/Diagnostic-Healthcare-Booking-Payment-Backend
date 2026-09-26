@@ -24,6 +24,12 @@ class IdempotencyPayloadMismatchError(APIException):
     default_code = "idempotency_payload_mismatch"
 
 
+class DuplicateBookingError(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_detail = "You already have an active booking for this test at this time."
+    default_code = "duplicate_booking"
+
+
 class PaymentNotFoundError(APIException):
     status_code = status.HTTP_404_NOT_FOUND
     default_detail = "Payment reference not found."

@@ -1,9 +1,11 @@
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
 from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory
 from apps.catalog.models import CentreTest
 from apps.catalog.serializers import CentreTestSerializer
+from apps.core.exceptions import DuplicateBookingError
 
 
 class BookingStatusHistorySerializer(serializers.ModelSerializer):
@@ -39,14 +41,19 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         centre_test = validated_data["centre_test"]
         appointment_at = validated_data["appointment_at"]
 
-        # Snapshot price from centre_test at creation time
-        booking = Booking.objects.create(
-            user=user,
-            centre_test=centre_test,
-            appointment_at=appointment_at,
-            amount=centre_test.price,
-            status=BookingStatus.PENDING,
-        )
+        # Snapshot price from centre_test at creation time. The partial unique index is the real
+        # guard against double booking; two concurrent requests can both pass any Python check.
+        try:
+            with transaction.atomic():
+                booking = Booking.objects.create(
+                    user=user,
+                    centre_test=centre_test,
+                    appointment_at=appointment_at,
+                    amount=centre_test.price,
+                    status=BookingStatus.PENDING,
+                )
+        except IntegrityError:
+            raise DuplicateBookingError()
 
         # Record initial status creation history
         BookingStatusHistory.objects.create(

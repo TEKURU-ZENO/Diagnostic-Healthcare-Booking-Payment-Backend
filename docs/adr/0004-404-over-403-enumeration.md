@@ -1,21 +1,28 @@
-# ADR 0004: Returning 404 Not Found Instead of 403 Forbidden to Prevent Resource Enumeration
+# ADR 0004: Preventing Resource Enumeration via Uniform 404 Responses
 
 ## Status
-Accepted
+Accepted (Amended)
 
 ## Context
 When an authenticated user requests a resource they do not own (e.g. `GET /api/v1/bookings/42/`), returning `HTTP 403 Forbidden` confirms that resource #42 exists in the database. Malicious actors can iterate over sequential IDs to enumerate booking volume, active user accounts, and test patterns.
 
+Furthermore, a subtle leakage vulnerability can occur if serializer-level validation and view-level authorization use different semantics. For example:
+- In `PaymentCreateSerializer`, using `booking = serializers.PrimaryKeyRelatedField(queryset=Booking.objects.all())` validates existence across the entire table.
+- A non-existent booking ID (e.g. `#999999`) fails serializer validation and yields `HTTP 400 Bad Request` ("object does not exist").
+- A valid booking ID belonging to another user passes serializer validation and triggers `HTTP 404 Not Found` in the view.
+- An attacker can exploit this discrepancy to test which booking IDs exist by checking whether the endpoint returns 400 or 404.
+
 ## Decision
-We enforce authorization at the queryset filtering level:
-```python
-def get_queryset(self):
-    if self.request.user.is_staff:
-        return Booking.objects.all()
-    return Booking.objects.filter(user=self.request.user)
-```
-When a user requests a booking belonging to another user, Django's `get_object()` fails to locate the record within the user's filtered queryset and raises standard `Http404` (`404 Not Found`).
+We enforce authorization and existence checks uniformly:
+1. In `PaymentCreateSerializer`, `booking` is declared as a plain integer (`serializers.IntegerField(min_value=1)`).
+2. The view queries the database under a scoped filter:
+   ```python
+   booking = Booking.objects.select_for_update().filter(id=requested_booking_id).first()
+   if not booking or (booking.user != request.user and not request.user.is_staff):
+       raise Http404("Booking not found.")
+   ```
+3. Both non-existent booking IDs and foreign booking IDs consistently return `HTTP 404 Not Found`.
 
 ## Consequences
-- **Zero Information Leakage**: An attacker cannot distinguish between a non-existent booking ID and another user's booking ID.
-- Prevents enumeration attacks across all customer-facing endpoints.
+- **True Zero Information Leakage**: An attacker cannot distinguish between a non-existent booking ID and another user's booking ID across both read and write endpoints.
+- Total defense against ID enumeration probing.

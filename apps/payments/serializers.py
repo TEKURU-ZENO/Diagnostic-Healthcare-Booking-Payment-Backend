@@ -1,13 +1,19 @@
 from rest_framework import serializers
 
-from apps.bookings.models import Booking
 from apps.payments.models import Payment
 
 
 class PaymentCreateSerializer(serializers.Serializer):
-    booking = serializers.PrimaryKeyRelatedField(queryset=Booking.objects.all())
+    # Plain integer, not PrimaryKeyRelatedField: a related field answers 400 "does not exist" for
+    # unknown IDs, while the view answers 404 for other users' IDs, which would leak existence.
+    booking = serializers.IntegerField(min_value=1)
     simulate_outcome = serializers.ChoiceField(
-        choices=[("SUCCESS", "Success"), ("FAILED", "Failed")],
+        choices=[
+            ("SUCCESS", "Success"),
+            ("FAILED", "Failed"),
+            ("ASYNC_SUCCESS", "Provider succeeds, response lost (settled by webhook)"),
+            ("ASYNC_FAILED", "Provider fails, response lost (settled by webhook)"),
+        ],
         default="SUCCESS",
         required=False,
     )

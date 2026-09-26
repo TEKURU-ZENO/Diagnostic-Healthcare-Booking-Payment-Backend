@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -32,19 +33,25 @@ class BookingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="cancel")
     def cancel(self, request, pk=None):
-        booking = self.get_object()
+        booking = self.get_object()  # scoped lookup: 404 for other users' bookings
 
-        # Cannot cancel past appointments
-        if booking.appointment_at <= timezone.now():
-            raise ValidationError("Cannot cancel appointments that are in the past.")
+        # Re-read under the same row lock the payment funnel takes. Without it, a webhook can
+        # confirm the booking between our read and our save, and the cancel would overwrite
+        # CONFIRMED without setting flagged_for_refund.
+        with transaction.atomic():
+            booking = Booking.objects.select_for_update().get(pk=booking.pk)
 
-        if booking.status == BookingStatus.CANCELLED:
-            return Response(
-                {"message": "Booking is already cancelled.", "booking": BookingDetailSerializer(booking).data},
-                status=status.HTTP_200_OK,
-            )
+            # Cannot cancel past appointments
+            if booking.appointment_at <= timezone.now():
+                raise ValidationError("Cannot cancel appointments that are in the past.")
 
-        booking.transition_to(BookingStatus.CANCELLED, source="user")
+            if booking.status == BookingStatus.CANCELLED:
+                return Response(
+                    {"message": "Booking is already cancelled.", "booking": BookingDetailSerializer(booking).data},
+                    status=status.HTTP_200_OK,
+                )
+
+            booking.transition_to(BookingStatus.CANCELLED, source="user")
         return Response(
             {"message": "Booking cancelled successfully.", "booking": BookingDetailSerializer(booking).data},
             status=status.HTTP_200_OK,
