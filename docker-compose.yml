@@ -23,7 +23,7 @@ services:
     restart: unless-stopped
     command: >
       sh -c "python manage.py migrate &&
-             python manage.py runserver 0.0.0.0:8000"
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 60"
     volumes:
       - .:/app
     ports:
@@ -34,9 +34,36 @@ services:
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
       - DATABASE_URL=postgres://eve_user:eve_password@db:5432/eve_db
       - WEBHOOK_SECRET=eve_test_webhook_secret_shared_key_2026
+      - MOCK_PAYMENTS_ENABLED=True
     depends_on:
       db:
         condition: service_healthy
 
+  worker:
+    build: .
+    container_name: eve_worker
+    restart: unless-stopped
+    command: >
+      sh -c "while true; do
+               python manage.py expire_stale_bookings;
+               python manage.py reconcile_payments;
+               sleep 60;
+             done"
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=True
+      - SECRET_KEY=django-insecure-eve-assignment-dev-secret-key-change-in-production-12345
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
+      - DATABASE_URL=postgres://eve_user:eve_password@db:5432/eve_db
+      - WEBHOOK_SECRET=eve_test_webhook_secret_shared_key_2026
+      - MOCK_PAYMENTS_ENABLED=True
+    depends_on:
+      db:
+        condition: service_healthy
+      web:
+        condition: service_started
+
 volumes:
   postgres_data:
+

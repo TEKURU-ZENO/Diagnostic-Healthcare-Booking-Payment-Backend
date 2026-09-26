@@ -43,11 +43,40 @@ jobs:
         run: |
           ruff check .
 
-      - name: Run test suite against real PostgreSQL
+      - name: Check for missing migrations
         env:
           DATABASE_URL: postgres://eve_user:eve_password@localhost:5432/eve_ci_db
           SECRET_KEY: ci-test-secret-key-not-for-production
           DEBUG: "True"
           WEBHOOK_SECRET: eve_test_webhook_secret_shared_key_2026
         run: |
+          python manage.py makemigrations --check --dry-run
+
+      - name: Run test suite against real PostgreSQL
+        env:
+          DATABASE_URL: postgres://eve_user:eve_password@localhost:5432/eve_ci_db
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DEBUG: "True"
+          WEBHOOK_SECRET: eve_test_webhook_secret_shared_key_2026
+          MOCK_PAYMENTS_ENABLED: "True"
+        run: |
           pytest -v --tb=short
+
+      - name: Run Chaos Simulator
+        env:
+          DATABASE_URL: postgres://eve_user:eve_password@localhost:5432/eve_ci_db
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DEBUG: "True"
+          WEBHOOK_SECRET: eve_test_webhook_secret_shared_key_2026
+          MOCK_PAYMENTS_ENABLED: "True"
+        run: |
+          python manage.py migrate
+          python manage.py seed_data
+          python manage.py runserver 127.0.0.1:8000 &
+          SERVER_PID=$!
+          for i in {1..20}; do
+            curl -s http://127.0.0.1:8000/healthz && break || sleep 1
+          done
+          python scripts/chaos_simulator.py http://127.0.0.1:8000 30
+          kill $SERVER_PID
+
