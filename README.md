@@ -33,14 +33,14 @@ Detailed Architecture Decision Records are maintained in [`docs/adr/`](docs/adr/
 1. **Database-Level Idempotency over Distributed Locks ([ADR 0001](docs/adr/0001-db-constraint-idempotency.md))**:
    Deduplication is enforced directly by PostgreSQL unique constraints (`WebhookEvent.event_id` and `Payment(user, idempotency_key)`). In-memory checks (`if already_processed: return`) break under concurrent retries arriving in the same millisecond. Volatile Redis locks introduce failure modes around worker crashes and TTL expiry. The database engine provides ACID atomicity with zero extra infrastructure.
 
-2. **Single Canonical Service Funnel ([ADR 0002](docs/adr/0002-single-service-funnel.md))**:
-   Both synchronous payment responses and asynchronous webhooks funnel through one transactional function: `apply_payment_result()`. It serializes concurrent updates with `select_for_update()` on the `Booking` row.
+2. **Single Canonical Service Funnel & Unidirectional Payment FSM ([ADR 0002](docs/adr/0002-single-service-funnel.md))**:
+   Both synchronous payment responses and asynchronous webhooks funnel through one transactional function: `apply_payment_result()`. It enforces consistent lock ordering (`Booking` locked first, then `Payment`) and a monotonic payment state machine: `SUCCESS` is terminal and cannot be overwritten by late failures, and exact duplicate deliveries execute as idempotent no-ops rather than false double-charges.
 
 3. **Status Audit Trail ([ADR 0003](docs/adr/0003-status-audit-trail.md))**:
    Every status change writes an append-only row to `BookingStatusHistory` recording `from_status`, `to_status`, `source`, and `event_id` inside the same database transaction.
 
 4. **Resource Enumeration Defense ([ADR 0004](docs/adr/0004-404-over-403-enumeration.md))**:
-   When User B queries User A's booking ID, the API returns `404 Not Found` rather than `403 Forbidden`. Returning 403 leaks whether a resource ID exists in the database.
+   When User B queries User A's booking ID, or a client references a non-existent booking during checkout, the API uniformly returns `404 Not Found` rather than `403 Forbidden` or `400 Bad Request`. This completely eliminates timing and status-code side channels that could reveal which booking IDs exist.
 
 5. **Nested Savepoints for PostgreSQL IntegrityError ([ADR 0005](docs/adr/0005-nested-savepoint-integrity-error.md))**:
    Catching an `IntegrityError` in a raw PostgreSQL transaction aborts the entire transaction block. Inbound webhook deduplication uses a nested savepoint (`with transaction.atomic():`). On duplicate collision, Postgres rolls back only to the savepoint, leaving the outer transaction healthy.
@@ -218,7 +218,25 @@ Dispatches dozens of bookings and subjects the webhook ingestion pipeline to sim
 docker compose exec web python scripts/chaos_simulator.py http://localhost:8000 50
 
 # Local:
-python scripts/chaos_simulator.py http://127.0.0.1:8000 30
+python scripts/chaos_simulator.py http://127.0.0.1:8000 50
+```
+
+Verified Invariant Report Output:
+```text
+======================================================================
+INVARIANT VERIFICATION REPORT
+======================================================================
+  * Total Bookings Evaluated:       50
+  * Injected Duplicate Webhooks:     29
+  * Injected Dropped Webhooks:       12
+  * Settled only by reconciliation:  12
+  * Payment != provider ledger:      0 (MUST BE 0)
+  * Booking != payment outcome:      0 (MUST BE 0)
+  * Wrong refund flags:              0 (MUST BE 0)
+  * Still PENDING after reconcile:   0 (MUST BE 0)
+----------------------------------------------------------------------
+All invariants held for this run.
+======================================================================
 ```
 
 ---
@@ -232,6 +250,7 @@ python scripts/chaos_simulator.py http://127.0.0.1:8000 30
 | **Bookings & FSM** | `tests/test_bookings.py` | Price snapshotting, past date rejection, 404 security isolation, audit history |
 | **Payments** | `tests/test_payments.py` | Scoped idempotency key, 422 mismatch, 409 conflict, double-charge refund flag |
 | **Webhooks** | `tests/test_webhooks.py` | HMAC verification, savepoint replay safety, slot collision recovery, multithreaded concurrency |
+| **Edge Cases** | `tests/test_edge_cases.py` | Payment state machine monotonicity, cancel read locking, unforgeable 404s, stale provider drops |
 | **Property-Based** | `tests/test_hypothesis.py` | Hypothesis testing across randomized event arrival streams asserting invariants |
 | **Health & Tracing** | `tests/test_healthz.py` | `/healthz` DB verification, contextvars `X-Request-ID` propagation |
 
