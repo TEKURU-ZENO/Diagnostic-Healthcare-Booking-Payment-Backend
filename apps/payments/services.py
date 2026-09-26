@@ -29,13 +29,28 @@ def apply_payment_result(
     Canonical single-funnel function for applying payment outcomes.
     Serializes concurrent modifications with select_for_update() on the Booking row.
     """
+    # Lock order is always booking, then payment, so this can't deadlock with POST /payments/.
     booking = Booking.objects.select_for_update().get(id=payment.booking_id)
+    payment = Payment.objects.select_for_update().get(id=payment.id)  # re-read: caller's copy may be stale
 
-    # 1. Update payment status
+    # 1. Payment-level state machine. The same result arriving again (sync API response followed
+    #    by the provider's own webhook, or reconciliation after a webhook) is a no-op.
+    if payment.status == status:
+        return payment, booking
+    if payment.status == PaymentStatus.SUCCESS:
+        # Money was captured. A later FAILED for the same payment never un-captures it.
+        logger.warning(
+            "Ignoring %s for a payment that already succeeded.",
+            status,
+            extra={"booking_id": booking.id, "provider_ref": payment.provider_ref, "event_id": event_id},
+        )
+        return payment, booking
+
     payment.status = status
     payment.save(update_fields=["status", "updated_at"])
 
-    # 2. Evaluate booking state transitions
+    # 2. Evaluate booking state transitions. From here on, `payment` has just changed state,
+    #    so a SUCCESS on an already CONFIRMED booking really is a second capture.
     if booking.status == BookingStatus.CONFIRMED:
         if status == PaymentStatus.FAILED:
             # Late FAILED webhook after booking is already CONFIRMED: log and ignore
@@ -129,6 +144,9 @@ def process_webhook_event(
         logger.warning("Webhook received with invalid HMAC signature.")
         return False, "invalid_signature", 401
 
+    if not isinstance(payload, dict):
+        return False, "malformed_payload", 400
+
     event_id = str(payload.get("event_id", ""))
     provider_ref = str(payload.get("provider_ref", ""))
     status_str = str(payload.get("status", "")).upper()
@@ -180,15 +198,23 @@ def process_webhook_event(
         event.save(update_fields=["status", "processed_at"])
         return True, "amount_mismatch", 200
 
-    # 5. Apply payment result
-    outcome = (
-        PaymentStatus.SUCCESS
-        if status_str == PaymentStatus.SUCCESS
-        else PaymentStatus.FAILED
-    )
+    # 5. Only SUCCESS and FAILED are final outcomes. Anything else (PENDING, REFUNDED, a typo)
+    #    must not be read as FAILED, or an unrelated event would fail a live booking.
+    if status_str not in (PaymentStatus.SUCCESS, PaymentStatus.FAILED):
+        logger.warning(
+            "Webhook with unsupported status %s ignored.",
+            status_str,
+            extra={"provider_ref": provider_ref, "event_id": event_id},
+        )
+        event.status = WebhookEventStatus.IGNORED
+        event.processed_at = timezone.now()
+        event.save(update_fields=["status", "processed_at"])
+        return True, "unsupported_status", 200
+
+    # 6. Apply payment result
     apply_payment_result(
         payment=payment,
-        status=outcome,
+        status=status_str,
         source="webhook",
         event_id=event_id,
     )

@@ -3,6 +3,11 @@ from decimal import Decimal
 from apps.mock_provider.models import MockProviderPayment, MockProviderStatus
 
 
+class GatewayTimeout(Exception):
+    """The provider accepted the charge but we never got its answer. Only a webhook or
+    reconciliation can tell us the outcome."""
+
+
 class PaymentGateway:
     """
     In-process payment gateway adapter.
@@ -20,9 +25,13 @@ class PaymentGateway:
         """
         Executes a deterministic charge on the mock provider.
         """
+        # "ASYNC_SUCCESS" / "ASYNC_FAILED": the provider records the outcome, but the response
+        # is lost, so our payment stays PENDING. This is what makes webhooks necessary.
+        requested = simulate_outcome.upper()
+        is_async = requested.startswith("ASYNC_")
         outcome = (
             MockProviderStatus.SUCCESS
-            if simulate_outcome.upper() == "SUCCESS"
+            if requested.removeprefix("ASYNC_") == "SUCCESS"
             else MockProviderStatus.FAILED
         )
 
@@ -30,6 +39,8 @@ class PaymentGateway:
             provider_ref=provider_ref,
             defaults={"amount": amount, "status": outcome},
         )
+        if is_async:
+            raise GatewayTimeout(provider_ref)
         return {
             "provider_ref": mock_payment.provider_ref,
             "status": mock_payment.status,

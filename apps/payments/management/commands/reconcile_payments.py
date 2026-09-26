@@ -38,14 +38,18 @@ class Command(BaseCommand):
         for payment in pending_payments:
             gateway_data = PaymentGateway.get_status(payment.provider_ref)
             if not gateway_data:
+                # We committed the PENDING row but the charge call never reached the provider
+                # (crash or timeout before it recorded anything). Nothing was captured, so fail it.
+                # Skipping it instead would hold the booking PENDING forever, because the expiry
+                # job deliberately ignores bookings that have an in-flight payment.
                 logger.warning(
-                    "Reconciliation: Provider has no record of payment ref %s.",
+                    "Reconciliation: provider has no record of %s; marking FAILED.",
                     payment.provider_ref,
                     extra={"provider_ref": payment.provider_ref, "booking_id": payment.booking_id},
                 )
-                continue
-
-            provider_status = gateway_data["status"]
+                provider_status = PaymentStatus.FAILED
+            else:
+                provider_status = gateway_data["status"]
             apply_payment_result(
                 payment=payment,
                 status=provider_status,
