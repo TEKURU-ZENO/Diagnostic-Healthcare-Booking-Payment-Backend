@@ -1,5 +1,6 @@
 """Edge cases found in review. Each asserts the correct behaviour and failed on the original code."""
 import json
+import threading
 from datetime import timedelta
 from decimal import Decimal
 
@@ -7,6 +8,7 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.db import connection, connections
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -165,3 +167,160 @@ def test_payment_endpoint_does_not_reveal_which_booking_ids_exist(client, ct):
     r_missing = client.post("/api/v1/payments/", {"booking": 999999}, format="json", HTTP_IDEMPOTENCY_KEY="b")
     assert r_theirs.status_code == r_missing.status_code, \
         f"someone else's booking -> {r_theirs.status_code}, nonexistent -> {r_missing.status_code}"
+
+
+@pytest.mark.django_db
+def test_simulate_outcome_rejected_when_mock_payments_disabled(client, user, ct):
+    b = make_booking(user, ct)
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr(settings, "MOCK_PAYMENTS_ENABLED", False)
+        r = client.post(
+            "/api/v1/payments/",
+            {"booking": b.id, "simulate_outcome": "SUCCESS"},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="mock_dis_key",
+        )
+        assert r.status_code == 400
+        assert "Simulating payment outcomes is disabled" in str(r.json())
+
+
+@pytest.mark.django_db
+def test_catalog_invalid_filter_centre_id_not_500(client):
+    r = client.get("/api/v1/catalog/centre-tests/?centre=abc")
+    assert r.status_code == 200
+    assert r.json()["results"] == []
+
+
+@pytest.mark.django_db
+def test_catalog_protected_error_returns_409(ct, user):
+    admin_user = User.objects.create_superuser(
+        username="admin_user", email="admin_user@example.com", password="Password!123"
+    )
+    admin_client = APIClient()
+    admin_client.force_authenticate(admin_user)
+    make_booking(user, ct)
+    # Attempting to delete centre_test that is referenced by a booking
+    r = admin_client.delete(f"/api/v1/catalog/centre-tests/{ct.id}/")
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "resource_protected"
+
+
+@pytest.mark.django_db
+def test_request_id_sanitization_rejects_malicious_or_long_header(client):
+    # Malicious injection
+    r1 = client.get("/healthz", HTTP_X_REQUEST_ID="<script>bad()</script>")
+    assert r1.status_code == 200
+    assert r1.headers["X-Request-ID"] != "<script>bad()</script>"
+    # Length > 64 chars
+    long_id = "a" * 65
+    r2 = client.get("/healthz", HTTP_X_REQUEST_ID=long_id)
+    assert r2.status_code == 200
+    assert r2.headers["X-Request-ID"] != long_id
+    # Valid ID preserved
+    valid_id = "req_test_12345"
+    r3 = client.get("/healthz", HTTP_X_REQUEST_ID=valid_id)
+    assert r3.status_code == 200
+    assert r3.headers["X-Request-ID"] == valid_id
+
+
+@pytest.mark.django_db
+def test_signup_case_insensitive_and_generic_error():
+    client = APIClient()
+    User.objects.create_user(username="Alice", email="Alice@example.com", password="Password123!")
+    # Attempt with lowercase username
+    r1 = client.post(
+        "/api/v1/auth/signup/",
+        {
+            "username": "alice",
+            "email": "diff@example.com",
+            "password": "StrongPassword!2026",
+        },
+        format="json",
+    )
+    assert r1.status_code == 400
+    assert "already exists" in str(r1.json())
+
+    # Attempt with uppercase email
+    r2 = client.post(
+        "/api/v1/auth/signup/",
+        {
+            "username": "diff_user",
+            "email": "ALICE@EXAMPLE.COM",
+            "password": "StrongPassword!2026",
+        },
+        format="json",
+    )
+    assert r2.status_code == 400
+    assert "already exists" in str(r2.json())
+
+
+@pytest.mark.skipif(
+    connection.vendor != "postgresql",
+    reason="Database concurrency and row-level locking tests require PostgreSQL engine",
+)
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_checkout_twenty_requests(user, ct):
+    b = make_booking(user, ct)
+    status_codes = []
+
+    def attempt_checkout(idx):
+        try:
+            cl = APIClient()
+            cl.force_authenticate(user)
+            res = cl.post(
+                "/api/v1/payments/",
+                {"booking": b.id, "simulate_outcome": "SUCCESS"},
+                format="json",
+                HTTP_IDEMPOTENCY_KEY=f"key_race_{idx}",
+            )
+            status_codes.append(res.status_code)
+        finally:
+            connections.close_all()
+
+    threads = [threading.Thread(target=attempt_checkout, args=(i,)) for i in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(status_codes) == 20
+    # Exactly 1 success (200) and 19 conflicts (409)
+    assert status_codes.count(200) == 1
+    assert status_codes.count(409) == 19
+    # Exactly one payment row was created
+    assert Payment.objects.filter(booking=b).count() == 1
+
+
+@pytest.mark.skipif(
+    connection.vendor != "postgresql",
+    reason="Database concurrency and row-level locking tests require PostgreSQL engine",
+)
+@pytest.mark.django_db(transaction=True)
+def test_concurrent_double_booking(user, ct):
+    slot = (timezone.now() + timedelta(days=5)).isoformat()
+    status_codes = []
+
+    def attempt_booking():
+        try:
+            cl = APIClient()
+            cl.force_authenticate(user)
+            res = cl.post(
+                "/api/v1/bookings/",
+                {"centre_test": ct.id, "appointment_at": slot},
+                format="json",
+            )
+            status_codes.append(res.status_code)
+        finally:
+            connections.close_all()
+
+    threads = [threading.Thread(target=attempt_booking) for _ in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(status_codes) == 10
+    assert status_codes.count(201) == 1
+    assert status_codes.count(409) == 9
+    assert Booking.objects.filter(centre_test=ct, appointment_at=slot).count() == 1
+

@@ -24,5 +24,5 @@ We enforce authorization and existence checks uniformly:
 3. Both non-existent booking IDs and foreign booking IDs consistently return `HTTP 404 Not Found`.
 
 ## Consequences
-- **True Zero Information Leakage**: An attacker cannot distinguish between a non-existent booking ID and another user's booking ID across both read and write endpoints.
-- Total defense against ID enumeration probing.
+- Uniform 404 responses ensure external callers cannot differentiate between non-existent booking IDs and other users' booking IDs across both read and write endpoints.
+- Mitigates sequential ID enumeration probing via HTTP status codes.

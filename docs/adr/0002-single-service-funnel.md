@@ -35,5 +35,5 @@ We enforce a strict, unidirectional payment-level state machine alongside the bo
 
 ## Consequences
 - Idempotent replay safety across overlapping synchronous and asynchronous deliveries.
-- Elimination of false refund flags during normal payment operations.
+- Prevents false refund flags during normal duplicate or overlapping payment operations.
 - Accurate ledger alignment between the application and external payment providers.

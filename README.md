@@ -40,7 +40,7 @@ Detailed Architecture Decision Records are maintained in [`docs/adr/`](docs/adr/
    Every status change writes an append-only row to `BookingStatusHistory` recording `from_status`, `to_status`, `source`, and `event_id` inside the same database transaction.
 
 4. **Resource Enumeration Defense ([ADR 0004](docs/adr/0004-404-over-403-enumeration.md))**:
-   When User B queries User A's booking ID, or a client references a non-existent booking during checkout, the API uniformly returns `404 Not Found` rather than `403 Forbidden` or `400 Bad Request`. This completely eliminates timing and status-code side channels that could reveal which booking IDs exist.
+   When User B queries User A's booking ID, or a client references a non-existent booking during checkout, the API uniformly returns `404 Not Found` rather than `403 Forbidden` or `400 Bad Request`. This mitigates status-code side channels that could reveal which booking IDs exist.
 
 5. **Nested Savepoints for PostgreSQL IntegrityError ([ADR 0005](docs/adr/0005-nested-savepoint-integrity-error.md))**:
    Catching an `IntegrityError` in a raw PostgreSQL transaction aborts the entire transaction block. Inbound webhook deduplication uses a nested savepoint (`with transaction.atomic():`). On duplicate collision, Postgres rolls back only to the savepoint, leaving the outer transaction healthy.
@@ -60,7 +60,7 @@ Detailed Architecture Decision Records are maintained in [`docs/adr/`](docs/adr/
 
 ### Option 1: Docker Compose (Recommended)
 
-Starts PostgreSQL 16 and the Django application with automated migrations:
+Starts PostgreSQL 16, the Gunicorn web server, and a background reconciliation/expiry worker (`eve_worker`):
 
 ```bash
 # 1. Start containers
@@ -203,6 +203,11 @@ python manage.py expire_stale_bookings --minutes 15
 
 ### Payment Reconciliation Job
 Finds payments stuck in `PENDING`, queries the provider ledger for ground truth, and settles them through `apply_payment_result()`.
+
+> [!NOTE]
+> **Eventual Consistency Window**:
+> Reconciliation runs periodically (e.g. every minute in the `eve_worker` service). During network partitions or provider webhook delivery outages, there is an eventual-consistency window between payment capture at the gateway and local booking confirmation until the next reconciliation tick polls the provider ledger.
+
 ```bash
 # Docker:
 docker compose exec web python manage.py reconcile_payments --minutes 15
