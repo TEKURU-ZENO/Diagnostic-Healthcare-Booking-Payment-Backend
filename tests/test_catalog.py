@@ -1,9 +1,11 @@
 from decimal import Decimal
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError
 from rest_framework.test import APIClient
-from apps.catalog.models import DiagnosticCentre, DiagnosticTest, CentreTest
+
+from apps.catalog.models import CentreTest, DiagnosticCentre, DiagnosticTest
 
 User = get_user_model()
 

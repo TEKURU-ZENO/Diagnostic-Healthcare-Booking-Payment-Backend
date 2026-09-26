@@ -1,15 +1,17 @@
-import json
 import uuid
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from hypothesis import given, settings as hyp_settings, strategies as st
+from hypothesis import given
+from hypothesis import settings as hyp_settings
+from hypothesis import strategies as st
 from hypothesis.extra.django import TestCase
 
-from apps.catalog.models import DiagnosticCentre, DiagnosticTest, CentreTest
 from apps.bookings.models import Booking, BookingStatus
+from apps.catalog.models import CentreTest, DiagnosticCentre, DiagnosticTest
 from apps.payments.models import Payment, PaymentStatus
 from apps.payments.services import process_webhook_event
 from tests.test_webhooks import generate_signature
@@ -59,7 +61,7 @@ class PaymentWebhookPropertyTests(TestCase):
             status=BookingStatus.PENDING,
         )
         provider_ref = f"pay_hypo_{uuid.uuid4().hex}"
-        payment = Payment.objects.create(
+        Payment.objects.create(
             user=self.user,
             booking=booking,
             amount=booking.amount,

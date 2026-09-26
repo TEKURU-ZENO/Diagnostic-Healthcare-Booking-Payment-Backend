@@ -1,27 +1,25 @@
 import json
 import uuid
-from decimal import Decimal
-from django.db import transaction, IntegrityError
+
+from django.db import IntegrityError, transaction
 from django.http import Http404
 from rest_framework import status
-from rest_framework.views import APIView
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
-from rest_framework.exceptions import ValidationError
+from rest_framework.views import APIView
 
-from apps.core.exceptions import (
-    PaymentConflictError,
-    IdempotencyPayloadMismatchError,
-)
 from apps.bookings.models import Booking, BookingStatus
+from apps.core.exceptions import (
+    IdempotencyPayloadMismatchError,
+    PaymentConflictError,
+)
+from apps.mock_provider.gateway import PaymentGateway
 from apps.payments.models import Payment, PaymentStatus
 from apps.payments.serializers import (
     PaymentCreateSerializer,
     PaymentSerializer,
-    WebhookPayloadSerializer,
 )
 from apps.payments.services import apply_payment_result, process_webhook_event
-from apps.mock_provider.gateway import PaymentGateway
 
 
 class PaymentCreateView(APIView):

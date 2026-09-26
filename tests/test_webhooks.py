@@ -1,19 +1,25 @@
-import hmac
 import hashlib
+import hmac
 import json
 import threading
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
+
 import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import connection, connections
 from django.utils import timezone
-from django.db import connections
 from rest_framework.test import APIClient
 
-from apps.catalog.models import DiagnosticCentre, DiagnosticTest, CentreTest
 from apps.bookings.models import Booking, BookingStatus
-from apps.payments.models import Payment, PaymentStatus, WebhookEvent, WebhookEventStatus
+from apps.catalog.models import CentreTest, DiagnosticCentre, DiagnosticTest
+from apps.payments.models import (
+    Payment,
+    PaymentStatus,
+    WebhookEvent,
+    WebhookEventStatus,
+)
 
 User = get_user_model()
 
@@ -287,8 +293,6 @@ def test_late_success_after_rebooked_slot_conflict_handled(api_client, user, cen
     assert booking_1.status == BookingStatus.FAILED
     assert payment_1.flagged_for_refund is True
 
-
-from django.db import connection
 
 @pytest.mark.skipif(
     connection.vendor != "postgresql",

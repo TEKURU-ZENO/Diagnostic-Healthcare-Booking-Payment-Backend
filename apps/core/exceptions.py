@@ -1,8 +1,9 @@
-from typing import Any, Optional
-from rest_framework.views import exception_handler
-from rest_framework.response import Response
+from typing import Any
+
 from rest_framework import status
 from rest_framework.exceptions import APIException
+from rest_framework.response import Response
+from rest_framework.views import exception_handler
 
 
 class InvalidStateTransitionError(APIException):
@@ -29,7 +30,7 @@ class PaymentNotFoundError(APIException):
     default_code = "payment_not_found"
 
 
-def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Optional[Response]:
+def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Response | None:
     """
     Custom exception handler to standardize all API error responses into:
     {

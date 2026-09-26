@@ -1,10 +1,11 @@
 from decimal import Decimal
-from django.db import models
+
 from django.conf import settings
-from django.utils import timezone
-from apps.core.models import TimeStampedModel
-from apps.core.exceptions import InvalidStateTransitionError
+from django.db import models
+
 from apps.catalog.models import CentreTest
+from apps.core.exceptions import InvalidStateTransitionError
+from apps.core.models import TimeStampedModel
 
 
 class BookingStatus(models.TextChoices):
@@ -79,11 +80,7 @@ class Booking(TimeStampedModel):
                 valid = True
 
         elif curr == BookingStatus.FAILED:
-            if new_status == BookingStatus.PENDING:
-                valid = True
-            elif new_status == BookingStatus.CONFIRMED and source in ("webhook", "reconciliation"):
-                valid = True
-            elif new_status == BookingStatus.CANCELLED:
+            if new_status == BookingStatus.PENDING or new_status == BookingStatus.CONFIRMED and source in ("webhook", "reconciliation") or new_status == BookingStatus.CANCELLED:
                 valid = True
 
         elif curr == BookingStatus.CONFIRMED:

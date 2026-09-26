@@ -1,7 +1,7 @@
-from decimal import Decimal
 from django.utils import timezone
 from rest_framework import serializers
-from apps.bookings.models import Booking, BookingStatusHistory, BookingStatus
+
+from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory
 from apps.catalog.models import CentreTest
 from apps.catalog.serializers import CentreTestSerializer
 

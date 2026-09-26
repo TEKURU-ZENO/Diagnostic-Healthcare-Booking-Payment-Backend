@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: eve_ci_db
+          POSTGRES_USER: eve_user
+          POSTGRES_PASSWORD: eve_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: |
+          ruff check .
+
+      - name: Run test suite against real PostgreSQL
+        env:
+          DATABASE_URL: postgres://eve_user:eve_password@localhost:5432/eve_ci_db
+          SECRET_KEY: ci-test-secret-key-not-for-production
+          DEBUG: "True"
+          WEBHOOK_SECRET: eve_test_webhook_secret_shared_key_2026
+        run: |
+          pytest -v --tb=short

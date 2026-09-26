@@ -1,6 +1,7 @@
 from rest_framework import serializers
-from apps.payments.models import Payment, PaymentStatus
+
 from apps.bookings.models import Booking
+from apps.payments.models import Payment
 
 
 class PaymentCreateSerializer(serializers.Serializer):

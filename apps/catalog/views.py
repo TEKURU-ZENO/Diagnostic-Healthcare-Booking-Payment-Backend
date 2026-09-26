@@ -1,11 +1,12 @@
 from rest_framework import viewsets
-from apps.catalog.models import DiagnosticCentre, DiagnosticTest, CentreTest
+
+from apps.catalog.models import CentreTest, DiagnosticCentre, DiagnosticTest
+from apps.catalog.permissions import IsAdminOrReadOnly
 from apps.catalog.serializers import (
+    CentreTestSerializer,
     DiagnosticCentreSerializer,
     DiagnosticTestSerializer,
-    CentreTestSerializer,
 )
-from apps.catalog.permissions import IsAdminOrReadOnly
 
 
 class DiagnosticCentreViewSet(viewsets.ModelViewSet):

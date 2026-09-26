@@ -1,6 +1,8 @@
 from decimal import Decimal
+
 from rest_framework import serializers
-from apps.catalog.models import DiagnosticCentre, DiagnosticTest, CentreTest
+
+from apps.catalog.models import CentreTest, DiagnosticCentre, DiagnosticTest
 
 
 class DiagnosticCentreSerializer(serializers.ModelSerializer):

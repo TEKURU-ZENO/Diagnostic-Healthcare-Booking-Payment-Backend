@@ -1,13 +1,14 @@
 import uuid
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from apps.catalog.models import DiagnosticCentre, DiagnosticTest, CentreTest
 from apps.bookings.models import Booking, BookingStatus
+from apps.catalog.models import CentreTest, DiagnosticCentre, DiagnosticTest
 from apps.payments.models import Payment, PaymentStatus
 from apps.payments.services import apply_payment_result
 

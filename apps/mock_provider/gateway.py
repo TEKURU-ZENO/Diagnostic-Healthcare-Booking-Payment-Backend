@@ -1,5 +1,5 @@
 from decimal import Decimal
-from typing import Optional
+
 from apps.mock_provider.models import MockProviderPayment, MockProviderStatus
 
 
@@ -37,7 +37,7 @@ class PaymentGateway:
         }
 
     @classmethod
-    def get_status(cls, provider_ref: str) -> Optional[dict]:
+    def get_status(cls, provider_ref: str) -> dict | None:
         """
         Queries authoritative status from external provider ledger.
         Used by the reconciliation service.

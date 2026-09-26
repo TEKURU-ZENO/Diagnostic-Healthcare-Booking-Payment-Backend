@@ -1,7 +1,9 @@
 from decimal import Decimal
-from django.core.management.base import BaseCommand
+
 from django.contrib.auth import get_user_model
-from apps.catalog.models import DiagnosticCentre, DiagnosticTest, CentreTest
+from django.core.management.base import BaseCommand
+
+from apps.catalog.models import CentreTest, DiagnosticCentre, DiagnosticTest
 
 User = get_user_model()
 

@@ -10,16 +10,15 @@ Simulates adversarial real-world payment gateway behaviors:
 - Asserts core distributed invariants: zero double charges, zero illegal flips
 """
 
-import os
-import sys
-import json
-import time
-import uuid
-import random
-import hmac
 import hashlib
-import urllib.request
+import hmac
+import json
+import os
+import random
+import sys
 import urllib.error
+import urllib.request
+import uuid
 from datetime import datetime, timedelta, timezone
 
 # Ensure project root is in sys.path
@@ -27,13 +26,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 import django
+
 django.setup()
 
-from django.core.management import call_command
 from django.conf import settings
+from django.core.management import call_command
+
 from apps.bookings.models import Booking, BookingStatus
-from apps.payments.models import Payment, PaymentStatus, WebhookEvent
 from apps.catalog.models import CentreTest
+from apps.payments.models import Payment, PaymentStatus
 
 
 def http_request(url: str, method: str = "GET", data: dict | None = None, headers: dict | None = None):

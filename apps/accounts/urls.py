@@ -1,9 +1,10 @@
 from django.urls import path
+
 from apps.accounts.views import (
+    MeView,
     SignUpView,
     ThrottledTokenObtainPairView,
     ThrottledTokenRefreshView,
-    MeView,
 )
 
 app_name = "accounts"

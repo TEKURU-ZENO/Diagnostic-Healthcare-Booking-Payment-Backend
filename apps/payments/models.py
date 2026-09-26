@@ -1,8 +1,10 @@
 from decimal import Decimal
-from django.db import models
+
 from django.conf import settings
-from apps.core.models import TimeStampedModel
+from django.db import models
+
 from apps.bookings.models import Booking
+from apps.core.models import TimeStampedModel
 
 
 class PaymentStatus(models.TextChoices):

@@ -1,4 +1,5 @@
 from django.urls import path
+
 from apps.mock_provider.views import MockChargeView, MockStatusView
 
 app_name = "mock_provider"

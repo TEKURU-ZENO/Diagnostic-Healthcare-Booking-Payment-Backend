@@ -1,11 +1,12 @@
 import logging
 from datetime import timedelta
+
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
+from apps.mock_provider.gateway import PaymentGateway
 from apps.payments.models import Payment, PaymentStatus
 from apps.payments.services import apply_payment_result
-from apps.mock_provider.gateway import PaymentGateway
 
 logger = logging.getLogger(__name__)
 
