@@ -56,16 +56,7 @@ def custom_exception_handler(exc: Exception, context: dict[str, Any]) -> Respons
     from django.db.models import ProtectedError
 
     if isinstance(exc, ProtectedError):
-        return Response(
-            {
-                "error": {
-                    "code": "resource_protected",
-                    "message": "Cannot delete this resource because existing records depend on it.",
-                    "details": None,
-                }
-            },
-            status=status.HTTP_409_CONFLICT,
-        )
+        exc = ResourceProtectedError()
 
     response = exception_handler(exc, context)
 

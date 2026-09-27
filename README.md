@@ -272,6 +272,7 @@ In accordance with healthcare data protection principles and India's **Digital P
 ---
 
 ## With More Time / Future Improvements
+- **Database-Level Unique Functional Index on Email**: Django's built-in `auth.User` model lacks a unique constraint on email. While application-level validation and atomic transactions prevent duplicate registrations, a dedicated migration creating a functional index (`CREATE UNIQUE INDEX uniq_auth_user_lower_email ON auth_user (LOWER(email));`) would enforce case-insensitive uniqueness at the PostgreSQL engine level against concurrent registration races.
 - **Automated Refund Gateway**: Integrate direct refund dispatch via gateway refund APIs when `flagged_for_refund=True`.
 - **Slot Capacity Management**: Atomic conditional slot increments using `Slot.objects.filter(id=..., booked__lt=F('capacity')).update(booked=F('booked')+1)` to prevent physical overbooking at physical labs.
 - **Transactional Outbox Pattern**: Emit patient notifications (SMS/Email) via an append-only `OutboxEvent` table processed by asynchronous Celery workers to avoid dual-write hazards.

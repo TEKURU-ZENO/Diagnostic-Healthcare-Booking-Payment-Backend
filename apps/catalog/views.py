@@ -47,12 +47,12 @@ class CentreTestViewSet(viewsets.ModelViewSet):
         active_only = self.request.query_params.get("active")
 
         if centre_id:
-            if centre_id.isdigit():
+            if centre_id.isdecimal():
                 qs = qs.filter(centre_id=int(centre_id))
             else:
                 qs = qs.none()
         if test_id:
-            if test_id.isdigit():
+            if test_id.isdecimal():
                 qs = qs.filter(test_id=int(test_id))
             else:
                 qs = qs.none()

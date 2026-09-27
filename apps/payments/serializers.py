@@ -14,14 +14,15 @@ class PaymentCreateSerializer(serializers.Serializer):
             ("ASYNC_SUCCESS", "Provider succeeds, response lost (settled by webhook)"),
             ("ASYNC_FAILED", "Provider fails, response lost (settled by webhook)"),
         ],
-        default="SUCCESS",
         required=False,
+        allow_null=True,
+        default=None,
     )
 
     def validate_simulate_outcome(self, value):
         from django.conf import settings
 
-        if not getattr(settings, "MOCK_PAYMENTS_ENABLED", False):
+        if value is not None and not getattr(settings, "MOCK_PAYMENTS_ENABLED", False):
             raise serializers.ValidationError(
                 "Simulating payment outcomes is disabled in this environment."
             )

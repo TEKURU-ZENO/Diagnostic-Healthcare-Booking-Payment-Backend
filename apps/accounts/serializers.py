@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.db import IntegrityError, transaction
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 User = get_user_model()
 
@@ -20,10 +21,10 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         read_only_fields = ("id",)
 
     def validate_username(self, value):
-        normalized = value.strip().lower()
-        if User.objects.filter(username__iexact=normalized).exists():
+        trimmed = value.strip()
+        if User.objects.filter(username__iexact=trimmed).exists():
             raise serializers.ValidationError("An account with these details already exists.")
-        return normalized
+        return trimmed
 
     def validate_email(self, value):
         normalized = value.strip().lower()
@@ -37,7 +38,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        username = validated_data["username"].strip().lower()
+        username = validated_data["username"].strip()
         email = validated_data["email"].strip().lower()
         try:
             with transaction.atomic():
@@ -60,3 +61,17 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = ("id", "username", "email")
         read_only_fields = ("id", "username", "email")
+
+
+class CaseInsensitiveTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Allows users to log in with their username regardless of character case.
+    """
+
+    def validate(self, attrs):
+        username = attrs.get(self.username_field)
+        if username:
+            user = User.objects.filter(username__iexact=username).first()
+            if user:
+                attrs[self.username_field] = user.get_username()
+        return super().validate(attrs)

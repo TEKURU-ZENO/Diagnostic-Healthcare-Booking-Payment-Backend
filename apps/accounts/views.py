@@ -5,11 +5,16 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.accounts.serializers import UserProfileSerializer, UserRegistrationSerializer
+from apps.accounts.serializers import (
+    CaseInsensitiveTokenObtainPairSerializer,
+    UserProfileSerializer,
+    UserRegistrationSerializer,
+)
 
 
 class ThrottledTokenObtainPairView(TokenObtainPairView):
     throttle_scope = "auth"
+    serializer_class = CaseInsensitiveTokenObtainPairSerializer
 
 
 class ThrottledTokenRefreshView(TokenRefreshView):

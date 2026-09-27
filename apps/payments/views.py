@@ -44,7 +44,22 @@ class PaymentCreateView(APIView):
         serializer = PaymentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         requested_booking_id = serializer.validated_data["booking"]
-        simulate_outcome = serializer.validated_data.get("simulate_outcome", "SUCCESS")
+
+        from django.conf import settings
+
+        if not getattr(settings, "MOCK_PAYMENTS_ENABLED", False):
+            return Response(
+                {
+                    "error": {
+                        "code": "gateway_unavailable",
+                        "message": "Live payment gateway is not configured.",
+                        "details": None,
+                    }
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        simulate_outcome = serializer.validated_data.get("simulate_outcome") or "SUCCESS"
 
         # 2. Check for previously completed idempotent request first
         existing_payment = Payment.objects.filter(

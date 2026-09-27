@@ -119,3 +119,39 @@ def test_protected_me_endpoint(api_client):
     assert res.status_code == 200
     assert res.json()["username"] == "david"
     assert res.json()["email"] == "david@example.com"
+
+
+@pytest.mark.django_db
+def test_signup_casing_preserved_and_case_insensitive_login(api_client):
+    # 1. Sign up as 'Dev' (mixed case)
+    payload = {
+        "username": "Dev",
+        "email": "dev@example.com",
+        "password": "StrongPassword!2026",
+    }
+    signup_res = api_client.post("/api/v1/auth/signup/", payload, format="json")
+    assert signup_res.status_code == 201
+    assert signup_res.json()["user"]["username"] == "Dev"
+
+    # User in DB preserves casing
+    user = User.objects.get(username="Dev")
+    assert user.username == "Dev"
+
+    # 2. Login as 'Dev' succeeds
+    login_dev = api_client.post(
+        "/api/v1/auth/login/",
+        {"username": "Dev", "password": "StrongPassword!2026"},
+        format="json",
+    )
+    assert login_dev.status_code == 200
+    assert "access" in login_dev.json()
+
+    # 3. Login as lowercase 'dev' also succeeds
+    login_lower = api_client.post(
+        "/api/v1/auth/login/",
+        {"username": "dev", "password": "StrongPassword!2026"},
+        format="json",
+    )
+    assert login_lower.status_code == 200
+    assert "access" in login_lower.json()
+

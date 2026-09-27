@@ -1,3 +1,11 @@
+x-app-env: &app-env
+  DEBUG: "True"
+  SECRET_KEY: django-insecure-eve-assignment-dev-secret-key-change-in-production-12345
+  ALLOWED_HOSTS: localhost,127.0.0.1,0.0.0.0,web
+  DATABASE_URL: postgres://eve_user:eve_password@db:5432/eve_db
+  WEBHOOK_SECRET: eve_test_webhook_secret_shared_key_2026
+  MOCK_PAYMENTS_ENABLED: "True"
+
 services:
   db:
     image: postgres:16-alpine
@@ -22,19 +30,14 @@ services:
     container_name: eve_web
     restart: unless-stopped
     command: >
-      sh -c "python manage.py migrate &&
+      sh -c "python manage.py collectstatic --noinput &&
+             python manage.py migrate &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3 --timeout 60"
     volumes:
       - .:/app
     ports:
       - "8000:8000"
-    environment:
-      - DEBUG=True
-      - SECRET_KEY=django-insecure-eve-assignment-dev-secret-key-change-in-production-12345
-      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
-      - DATABASE_URL=postgres://eve_user:eve_password@db:5432/eve_db
-      - WEBHOOK_SECRET=eve_test_webhook_secret_shared_key_2026
-      - MOCK_PAYMENTS_ENABLED=True
+    environment: *app-env
     depends_on:
       db:
         condition: service_healthy
@@ -51,13 +54,7 @@ services:
              done"
     volumes:
       - .:/app
-    environment:
-      - DEBUG=True
-      - SECRET_KEY=django-insecure-eve-assignment-dev-secret-key-change-in-production-12345
-      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,web
-      - DATABASE_URL=postgres://eve_user:eve_password@db:5432/eve_db
-      - WEBHOOK_SECRET=eve_test_webhook_secret_shared_key_2026
-      - MOCK_PAYMENTS_ENABLED=True
+    environment: *app-env
     depends_on:
       db:
         condition: service_healthy

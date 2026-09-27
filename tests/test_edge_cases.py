@@ -174,21 +174,43 @@ def test_simulate_outcome_rejected_when_mock_payments_disabled(client, user, ct)
     b = make_booking(user, ct)
     with pytest.MonkeyPatch.context() as m:
         m.setattr(settings, "MOCK_PAYMENTS_ENABLED", False)
-        r = client.post(
+
+        # 1. Explicit simulate_outcome is rejected with 400
+        r_explicit = client.post(
             "/api/v1/payments/",
             {"booking": b.id, "simulate_outcome": "SUCCESS"},
             format="json",
-            HTTP_IDEMPOTENCY_KEY="mock_dis_key",
+            HTTP_IDEMPOTENCY_KEY="mock_dis_key_1",
         )
-        assert r.status_code == 400
-        assert "Simulating payment outcomes is disabled" in str(r.json())
+        assert r_explicit.status_code == 400
+        assert "Simulating payment outcomes is disabled" in str(r_explicit.json())
+
+        # 2. Payment attempt without simulate_outcome returns clear 503 (no gateway configured)
+        r_normal = client.post(
+            "/api/v1/payments/",
+            {"booking": b.id},
+            format="json",
+            HTTP_IDEMPOTENCY_KEY="mock_dis_key_2",
+        )
+        assert r_normal.status_code == 503
+        assert "gateway_unavailable" in str(r_normal.json())
 
 
 @pytest.mark.django_db
 def test_catalog_invalid_filter_centre_id_not_500(client):
-    r = client.get("/api/v1/catalog/centre-tests/?centre=abc")
-    assert r.status_code == 200
-    assert r.json()["results"] == []
+    # Non-digit string
+    r1 = client.get("/api/v1/catalog/centre-tests/?centre=abc")
+    assert r1.status_code == 200
+    assert r1.json()["results"] == []
+
+    # Superscript digit "²" (which isdigit() returns True for, but int() crashes without isdecimal())
+    r2 = client.get("/api/v1/catalog/centre-tests/?centre=\u00b2")
+    assert r2.status_code == 200
+    assert r2.json()["results"] == []
+
+    r3 = client.get("/api/v1/catalog/centre-tests/?test=\u00b2")
+    assert r3.status_code == 200
+    assert r3.json()["results"] == []
 
 
 @pytest.mark.django_db
