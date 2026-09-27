@@ -125,7 +125,7 @@ erDiagram
 |---|---|---|---|---|
 | `POST` | `/api/v1/auth/signup/` | Public | Register user (`username`, `email`, `password`) | `201`, `400` |
 | `POST` | `/api/v1/auth/login/` | Public | Obtain JWT pair (case-insensitive username lookup) | `200`, `401` |
-| `POST` | `/api/v1/auth/token/refresh/` | Public | Refresh JWT access token | `200`, `401` |
+| `POST` | `/api/v1/auth/refresh/` | Public | Refresh JWT access token | `200`, `401` |
 | `GET` | `/api/v1/auth/me/` | JWT | Current authenticated user profile | `200`, `401` |
 | `GET` | `/api/v1/catalog/centres/` | JWT | List diagnostic centres (filter: `?city=`) | `200`, `401` |
 | `POST` | `/api/v1/catalog/centres/` | Staff | Create diagnostic centre | `201`, `403` |

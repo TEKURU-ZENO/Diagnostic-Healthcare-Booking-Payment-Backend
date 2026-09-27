@@ -90,6 +90,15 @@ def test_login_success(api_client):
     assert "access" in data
     assert "refresh" in data
 
+    # Verify refresh token endpoint returns new access token
+    refresh_res = api_client.post(
+        "/api/v1/auth/refresh/",
+        {"refresh": data["refresh"]},
+        format="json",
+    )
+    assert refresh_res.status_code == 200
+    assert "access" in refresh_res.json()
+
 
 @pytest.mark.django_db
 def test_login_invalid_credentials(api_client):

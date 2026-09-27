@@ -6,7 +6,6 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.http import Http404
 from django.utils import timezone
 
 from apps.bookings.models import Booking, BookingStatus
@@ -23,6 +22,11 @@ from apps.payments.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class BookingNotFound(Exception):
+    """Raised when a booking does not exist or does not belong to the calling user."""
+    pass
 
 
 def initiate_payment(
@@ -51,62 +55,57 @@ def initiate_payment(
         return existing_payment, 200
 
     # 2. Transaction 1: Lock booking, validate ownership & state, insert PENDING payment
-    try:
-        with transaction.atomic():
-            # Lock booking row to serialize against background expiry and concurrent payments
-            booking = (
-                Booking.objects.select_for_update()
-                .filter(id=booking_id)
-                .first()
+    with transaction.atomic():
+        # Lock booking row to serialize against background expiry and concurrent payments
+        booking = (
+            Booking.objects.select_for_update()
+            .filter(id=booking_id)
+            .first()
+        )
+        if not booking or (booking.user != user and not user.is_staff):
+            # Zero existence leakage: caller cannot see bookings belonging to other users
+            raise BookingNotFound("Booking not found.")
+
+        if booking.status in (BookingStatus.CONFIRMED, BookingStatus.CANCELLED):
+            raise PaymentConflictError(
+                f"Cannot initiate payment for booking with status '{booking.status}'."
             )
-            if not booking or (booking.user != user and not user.is_staff):
-                # Zero existence leakage: return 404 if booking not owned by caller
-                raise Http404("Booking not found.")
 
-            if booking.status in (BookingStatus.CONFIRMED, BookingStatus.CANCELLED):
-                raise PaymentConflictError(
-                    f"Cannot initiate payment for booking with status '{booking.status}'."
+        if booking.appointment_at <= timezone.now():
+            raise PaymentConflictError("Cannot pay for an appointment that is in the past.")
+
+        if booking.status == BookingStatus.FAILED:
+            booking.transition_to(BookingStatus.PENDING, source="api")
+
+        # Generate local merchant reference
+        provider_ref = f"pay_{uuid.uuid4().hex}"
+
+        # Insert-first in nested savepoint to eliminate race conditions
+        try:
+            with transaction.atomic():
+                payment = Payment.objects.create(
+                    user=user,
+                    booking=booking,
+                    amount=booking.amount,
+                    idempotency_key=idempotency_key,
+                    provider_ref=provider_ref,
+                    status=PaymentStatus.PENDING,
                 )
-
-            if booking.appointment_at <= timezone.now():
-                raise PaymentConflictError("Cannot pay for an appointment that is in the past.")
-
-            if booking.status == BookingStatus.FAILED:
-                booking.transition_to(BookingStatus.PENDING, source="api")
-
-            # Generate local merchant reference
-            provider_ref = f"pay_{uuid.uuid4().hex}"
-
-            # Insert-first in nested savepoint to eliminate race conditions
-            try:
-                with transaction.atomic():
-                    payment = Payment.objects.create(
-                        user=user,
-                        booking=booking,
-                        amount=booking.amount,
-                        idempotency_key=idempotency_key,
-                        provider_ref=provider_ref,
-                        status=PaymentStatus.PENDING,
+        except IntegrityError:
+            # Race condition check: another simultaneous request inserted first
+            existing = Payment.objects.filter(
+                user=user, idempotency_key=idempotency_key
+            ).first()
+            if existing:
+                if existing.booking_id != booking.id:
+                    raise IdempotencyPayloadMismatchError(
+                        "Idempotency-Key was already used for a different booking."
                     )
-            except IntegrityError:
-                # Race condition check: another simultaneous request inserted first
-                existing = Payment.objects.filter(
-                    user=user, idempotency_key=idempotency_key
-                ).first()
-                if existing:
-                    if existing.booking_id != booking.id:
-                        raise IdempotencyPayloadMismatchError(
-                            "Idempotency-Key was already used for a different booking."
-                        )
-                    return existing, 200
+                return existing, 200
 
-                raise PaymentConflictError(
-                    "Another payment is currently in-flight for this booking."
-                )
-    except Http404:
-        raise
-    except (PaymentConflictError, IdempotencyPayloadMismatchError):
-        raise
+            raise PaymentConflictError(
+                "Another payment is currently in-flight for this booking."
+            )
 
     # 3. Transaction 1 committed PENDING payment before calling gateway.
     # Call external payment gateway without holding any DB locks or open transactions.

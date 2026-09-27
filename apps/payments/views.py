@@ -1,6 +1,7 @@
 import json
 
 from django.conf import settings
+from django.http import Http404
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -10,7 +11,11 @@ from apps.payments.serializers import (
     PaymentCreateSerializer,
     PaymentSerializer,
 )
-from apps.payments.services import initiate_payment, process_webhook_event
+from apps.payments.services import (
+    BookingNotFound,
+    initiate_payment,
+    process_webhook_event,
+)
 
 
 class PaymentCreateView(APIView):
@@ -49,12 +54,15 @@ class PaymentCreateView(APIView):
 
         simulate_outcome = serializer.validated_data.get("simulate_outcome") or "SUCCESS"
 
-        payment, http_status = initiate_payment(
-            user=request.user,
-            booking_id=requested_booking_id,
-            idempotency_key=idempotency_key,
-            simulate_outcome=simulate_outcome,
-        )
+        try:
+            payment, http_status = initiate_payment(
+                user=request.user,
+                booking_id=requested_booking_id,
+                idempotency_key=idempotency_key,
+                simulate_outcome=simulate_outcome,
+            )
+        except BookingNotFound:
+            raise Http404("Booking not found.")
 
         return Response(PaymentSerializer(payment).data, status=http_status)
 

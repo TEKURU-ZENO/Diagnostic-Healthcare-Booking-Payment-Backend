@@ -129,7 +129,7 @@ def run_chaos_simulation(base_url="http://127.0.0.1:8000", total_runs=30):
             headers={**auth_headers, "Idempotency-Key": idemp_key},
         )
         if p_code in (200, 201, 202):
-            payment = p_data.get("payment", p_data)  # 202 wraps the payment
+            payment = p_data
             created_payments.append({
                 "booking_id": booking_id,
                 "provider_ref": payment["provider_ref"],
